@@ -34,15 +34,22 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class Widget; }
 QT_END_NAMESPACE
 
+
 class PluginGUI : public QWidget
 {
     Q_OBJECT
+
+    typedef void ( *filter )(unsigned char * image, unsigned char * result,  int width, int height, float value);
+    typedef QByteArray ( *createPicture)(unsigned char * imageData, int fileSize, int imageWidth, int imageHeight);
 
 public:
     void addElement(QString elementType, QString elementName, QString parameters);
     int getElementNumber(QString elementName);
     void readXML(QString xml);
     void applyFilter();
+    void getPicture(char * picture);
+    void setPicture(QByteArray data);
+    void valueChanged(int value);
 
     PluginGUI(QString dllPath, QWidget *parent = nullptr);
     ~PluginGUI();
@@ -59,5 +66,13 @@ private:
     unsigned char * original;
     BMPheader * header;
     char * padding;
+
+
+    filter applyFilter_;
+    createPicture createPicture_;
+
+signals:
+    void filtered(QByteArray image);
+
 };
 #endif // WIDGET_H

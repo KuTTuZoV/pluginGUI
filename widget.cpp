@@ -42,35 +42,9 @@ void PluginGUI::readXML(QString xml)
         parameter = parameter.nextSibling();
     }
 
-    picture = new QLabel("");
+    QSlider* slider = this->findChild<QSlider*>("slider");
 
-    QString file = "F:/lena512color.bmp";
-
-    pixmap.load(file);
-    picture->setPixmap(pixmap);
-
-
-    QFile image("F:/lena512color.bmp");
-    image.open(QIODevice::ReadOnly);
-    //Чтение заголовка файла
-    QByteArray data = image.read(sizeof(BMPheader));
-
-    header = (BMPheader *)data.data();
-    original = new unsigned char[header->biSizeImage];
-
-    //Сохранение значений ширины и высоты записаных в заголовке
-    int imgWidth = header->biWidth;
-    int imgHeight = header->biHeight;
-
-    int bytesCount = imgWidth * imgHeight * header->biBitCount / 8;
-
-    padding = new char[header->bfOffBits - sizeof(BMPheader)];
-    image.read(padding, header->bfOffBits - sizeof(BMPheader));
-    image.read((char*)original, header->biSizeImage);
-
-    image.close();
-
-    this->basicLayout.addWidget(picture);
+    connect(slider, &QSlider::valueChanged, this, &PluginGUI::valueChanged);
 
     QSpacerItem * spacer = new QSpacerItem(0,0,QSizePolicy::Minimum, QSizePolicy::Expanding);
     this->basicLayout.addSpacerItem(spacer);
@@ -83,26 +57,59 @@ void PluginGUI::applyFilter()
 
     QSlider* slider = this->findChild<QSlider*>("slider");
 
+    float value_ = slider->value() / 100.0;
+    applyFilter_(original, resImage, 512 * 3, 512, value_);
+
+    QByteArray data = createPicture_(resImage, 786486, 512, 512);
+
+    res = pixmap.loadFromData(data);
+    picture->setPixmap(pixmap);
+
+    filtered(data);
+}
+
+void PluginGUI::getPicture(char *picture)
+{
     QLibrary lib(dllPath);
 
     if(!lib.load()) {
         int a = 5;
     }
 
-    typedef void ( *filter )(unsigned char * image, unsigned char * result,  int width, int height, float value);
-        filter applyFilter = (filter) lib.resolve("filter");
-        if( applyFilter ) {}
-
-    applyFilter(original, resImage, 512 * 3, 512, 5);
-
     typedef QByteArray ( *createPicture)(unsigned char * imageData, int fileSize, int imageWidth, int imageHeight);
         createPicture createPicture_ = (createPicture) lib.resolve("createPicture");
         if(createPicture_) {}
 
+    QByteArray data = createPicture_(original, 786486, 512, 512);
+
+    memcpy(picture, data.data(), data.count());
+}
+
+void PluginGUI::setPicture(QByteArray data)
+{
+    bool res = pixmap.loadFromData(data);
+
+    picture->setPixmap(pixmap);
+
+    header = (BMPheader *)data.data();
+    original = new unsigned char[512*512*3];
+
+    memcpy(original, data.data() + header->bfOffBits, 512*512*3);
+}
+
+void PluginGUI::valueChanged(int value)
+{
+    bool res = false;
+    unsigned char * resImage = new unsigned char[512*512*3];
+
+    QSlider* slider = this->findChild<QSlider*>("slider");
+
+    float value_ = slider->value() / 100.0;
+    applyFilter_(original, resImage, 512 * 3, 512, value_);
+
     QByteArray data = createPicture_(resImage, 786486, 512, 512);
 
     res = pixmap.loadFromData(data);
-    res = pixmap.save("G:/temp.bmp");
     picture->setPixmap(pixmap);
 }
 
@@ -129,8 +136,8 @@ void PluginGUI::addElement(QString elementType, QString elementName, QString par
 
             QSlider * temp = new QSlider(Qt::Orientation::Horizontal);
 
-            temp->setMinimum(0);
-            temp->setMaximum(100);
+            temp->setMinimum(parameters.split(";")[1].toInt());
+            temp->setMaximum(parameters.split(";")[2].toInt());
 
             temp->setObjectName("slider");
             elementList.append(temp);
@@ -168,6 +175,27 @@ PluginGUI::PluginGUI(QString dllPath, QWidget *parent)
     ui->setupUi(this);
     this->setLayout(&this->basicLayout);
     this->dllPath = dllPath;
+    picture = new QLabel("");
+
+    QLibrary lib(dllPath);
+    QFile pluginDescription("pluginDescription.xml");
+
+    this->basicLayout.addWidget(picture);
+
+    if(!lib.load()) {
+        this->setWindowTitle("Библиотека не загружена");
+        return;
+    }
+
+    if(!pluginDescription.open(QIODevice::ReadOnly)) {
+        this->setWindowTitle(this->windowTitle() + " Файл с описанием на загружен");
+        return;
+    }
+
+    readXML(pluginDescription.readAll());
+
+    applyFilter_ = (filter) lib.resolve("filter");
+    createPicture_ = (createPicture) lib.resolve("createPicture");
 }
 
 PluginGUI::~PluginGUI()
